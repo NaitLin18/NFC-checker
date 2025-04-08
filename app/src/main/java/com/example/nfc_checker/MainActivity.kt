@@ -58,14 +58,15 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import okhttp3.Call
 import okhttp3.Callback
-import okhttp3.MediaType
+import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.OkHttpClient
 import okhttp3.Request
 import okhttp3.RequestBody
-import java.io.IOException
-import okhttp3.MediaType.Companion.toMediaType
 import okhttp3.Response
-
+import java.io.IOException
+import android.content.Context
+import android.net.ConnectivityManager
+import android.net.NetworkCapabilities
 
 class MainActivity : ComponentActivity() {
     private lateinit var takePictureLauncher: ActivityResultLauncher<Intent>
@@ -97,7 +98,8 @@ class MainActivity : ComponentActivity() {
 
         // Create a PendingIntent to handle NFC intents
         val intent = Intent(this, javaClass).addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP)
-        pendingIntent = PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_MUTABLE)
+        pendingIntent =
+            PendingIntent.getActivity(this, 0, intent, PendingIntent.FLAG_MUTABLE)
 
         // Create intent filters for NFC intents
         val ndef = IntentFilter(NfcAdapter.ACTION_NDEF_DISCOVERED).apply {
@@ -168,7 +170,7 @@ class MainActivity : ComponentActivity() {
             mutableStateOf(
                 Build.SERIAL ?: "IZHIOV55CQOFUS75"
             )
-        } //  Замените на реальный серийник
+        } // Замените на реальный серийник
 
         Column(
             modifier = Modifier
@@ -208,22 +210,32 @@ class MainActivity : ComponentActivity() {
                                             ).show()
                                         }
                                     } else {
-                                        CoroutineScope(Dispatchers.IO).launch {
-                                            sendDataToServer(
-                                                deviceSerialNumber,
-                                                "Первое помещение", //  Замените на реальное помещение
-                                                issueType,
-                                                "", //  Пустое описание для "Нет неисправности"
-                                                NFCState.imageUris.firstOrNull()?.toString()
-                                                    ?: "" //  URL первой фотографии или пустая строка
-                                            )
+                                        // Проверка подключения к сети
+                                        if (isNetworkAvailable(context)) {
+                                            CoroutineScope(Dispatchers.IO).launch {
+                                                sendDataToServer(
+                                                    deviceSerialNumber,
+                                                    "Первое помещение", // Замените на реальное помещение
+                                                    issueType,
+                                                    "", // Пустое описание для "Нет неисправности"
+                                                    NFCState.imageUris.firstOrNull()
+                                                        ?.toString()
+                                                        ?: "" // URL первой фотографии или пустая строка
+                                                )
+                                            }
+                                            Toast.makeText(
+                                                context,
+                                                "Данные отправлены на сервер",
+                                                Toast.LENGTH_SHORT
+                                            ).show()
+                                            NFCState.screenState = "select_issue"
+                                        } else {
+                                            Toast.makeText(
+                                                context,
+                                                "Нет подключения к сети. Пожалуйста, подключитесь к интернету и попробуйте снова.",
+                                                Toast.LENGTH_SHORT
+                                            ).show()
                                         }
-                                        Toast.makeText(
-                                            context,
-                                            "Данные отправлены на сервер",
-                                            Toast.LENGTH_SHORT
-                                        ).show()
-                                        NFCState.screenState = "select_issue"
                                     }
                                 },
                                 modifier = Modifier
@@ -311,7 +323,8 @@ class MainActivity : ComponentActivity() {
 
                             Button(
                                 onClick = {
-                                    val takePictureIntent = Intent(MediaStore.ACTION_IMAGE_CAPTURE)
+                                    val takePictureIntent =
+                                        Intent(MediaStore.ACTION_IMAGE_CAPTURE)
                                     if (takePictureIntent.resolveActivity(context.packageManager) != null) {
                                         takePicture(takePictureIntent) // Открыть камеру
                                     }
@@ -328,22 +341,32 @@ class MainActivity : ComponentActivity() {
                     // Отправить данные
                     Button(
                         onClick = {
-                            val issueType = NFCState.selectedIssue ?: "Неисправность"
-                            CoroutineScope(Dispatchers.IO).launch {
-                                sendDataToServer(
-                                    deviceSerialNumber,
-                                    "Первое помещение", // Замените на реальное помещение
-                                    issueType,
-                                    NFCState.description,
-                                    NFCState.imageUris.firstOrNull()?.toString() ?: ""
-                                )
+                            // Проверка подключения к сети
+                            if (isNetworkAvailable(context)) {
+                                val issueType = NFCState.selectedIssue ?: "Неисправность"
+                                CoroutineScope(Dispatchers.IO).launch {
+                                    sendDataToServer(
+                                        deviceSerialNumber,
+                                        "Первое помещение", // Замените на реальное помещение
+                                        issueType,
+                                        NFCState.description,
+                                        NFCState.imageUris.firstOrNull()
+                                            ?.toString() ?: ""
+                                    )
+                                }
+                                Toast.makeText(
+                                    context,
+                                    "Данные отправлены на сервер",
+                                    Toast.LENGTH_SHORT
+                                ).show()
+                                NFCState.screenState = "select_issue"
+                            } else {
+                                Toast.makeText(
+                                    context,
+                                    "Нет подключения к сети. Пожалуйста, подключитесь к интернету и попробуйте снова.",
+                                    Toast.LENGTH_SHORT
+                                ).show()
                             }
-                            Toast.makeText(
-                                context,
-                                "Данные отправлены на сервер",
-                                Toast.LENGTH_SHORT
-                            ).show()
-                            NFCState.screenState = "select_issue"
                         },
                         modifier = Modifier
                             .fillMaxWidth()
@@ -369,23 +392,11 @@ class MainActivity : ComponentActivity() {
 
     private fun handleNfcIntent(intent: Intent) {
         if (NfcAdapter.ACTION_NDEF_DISCOVERED == intent.action) {
-            val rawMessages = intent.getParcelableArrayExtra(NfcAdapter.EXTRA_NDEF_MESSAGES)
-            val message = rawMessages?.get(0) as? android.nfc.NdefMessage
-            message?.let {
-                val record = it.records[0]
-                val payload = record.payload
-                // Convert payload to string
-                val text = String(payload.copyOfRange(3, payload.size))
-                Toast.makeText(this, "NFC Tag: $text", Toast.LENGTH_SHORT).show()
-                // Здесь можно добавить логику для обработки данных с NFC-метки
-            }
+            // Отображаем Toast-сообщение
+            Toast.makeText(this, "NFC отсканировано: первое помещение", Toast.LENGTH_SHORT).show()
         } else if (NfcAdapter.ACTION_TECH_DISCOVERED == intent.action || NfcAdapter.ACTION_TAG_DISCOVERED == intent.action) {
-            val tag: Tag? = intent.getParcelableExtra(NfcAdapter.EXTRA_TAG)
-            tag?.let {
-                val tagId = it.id.joinToString(":") { byte -> "%02X".format(byte) }
-                Toast.makeText(this, "NFC Tag ID: $tagId", Toast.LENGTH_SHORT).show()
-                // Здесь можно добавить логику для обработки ID NFC-метки
-            }
+            // Отображаем Toast-сообщение
+            Toast.makeText(this, "NFC отсканировано: первое помещение", Toast.LENGTH_SHORT).show()
         }
     }
 
@@ -398,7 +409,7 @@ class MainActivity : ComponentActivity() {
     ) {
         val client = OkHttpClient()
         val mediaType =
-            "application/json".toMediaType() //  Исправлено использование MediaType.parse()
+            "application/json".toMediaType() // Исправлено использование MediaType.parse()
         val json = """
         {
             "deviceSerialNumber": "$deviceSerialNumber",
@@ -407,11 +418,11 @@ class MainActivity : ComponentActivity() {
             "description": "$description",
             "photoUrl": "$photoUrl"
         }
-    """.trimIndent()
+        """.trimIndent()
         val body = RequestBody.create(mediaType, json)
 
         val request = Request.Builder()
-            .url("http://localhost:3000/issues") // Замените на URL вашего API
+            .url("http://192.168.1.1:3000/issues") // Замените на URL вашего API
             .post(body)
             .build()
 
@@ -424,11 +435,33 @@ class MainActivity : ComponentActivity() {
             override fun onResponse(
                 call: Call,
                 response: Response
-            ) { //  Используется импортированный Response
+            ) { // Используется импортированный Response
                 // Обработка успешного ответа
                 val responseData = response.body?.string()
                 println("Данные успешно отправлены: $responseData")
             }
         })
+    }
+
+    fun isNetworkAvailable(context: Context): Boolean {
+        val connectivityManager =
+            context.getSystemService(Context.CONNECTIVITY_SERVICE) as ConnectivityManager
+
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val network = connectivityManager.activeNetwork ?: return false
+            val activeNetwork = connectivityManager.getNetworkCapabilities(network) ?: return false
+
+            return when {
+                activeNetwork.hasTransport(NetworkCapabilities.TRANSPORT_WIFI) -> true
+                activeNetwork.hasTransport(NetworkCapabilities.TRANSPORT_CELLULAR) -> true
+                else -> false
+            }
+        } else {
+            // Для старых версий Android
+            @Suppress("DEPRECATION")
+            val networkInfo = connectivityManager.activeNetworkInfo ?: return false
+            @Suppress("DEPRECATION")
+            return networkInfo.isConnected
+        }
     }
 }
