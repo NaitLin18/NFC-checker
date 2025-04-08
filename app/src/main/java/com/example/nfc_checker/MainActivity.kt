@@ -411,14 +411,14 @@ class MainActivity : ComponentActivity() {
         val mediaType =
             "application/json".toMediaType() // Исправлено использование MediaType.parse()
         val json = """
-        {
-            "deviceSerialNumber": "$deviceSerialNumber",
-            "location": "$location",
-            "issueType": "$issueType",
-            "description": "$description",
-            "photoUrl": "$photoUrl"
-        }
-        """.trimIndent()
+            {
+             "deviceSerialNumber": "$deviceSerialNumber",
+             "location": "$location",
+             "issueType": "$issueType",
+             "description": "$description",
+             "photoUrl": "$photoUrl"
+            }
+            """.trimIndent()
         val body = RequestBody.create(mediaType, json)
 
         val request = Request.Builder()
