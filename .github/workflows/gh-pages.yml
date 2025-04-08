@@ -1,0 +1,43 @@
+name: Deploy to GitHub Pages
+
+on:
+  push:
+    branches:
+      - master # Или ваша основная ветка (main)
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: "pages"
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v3
+
+      - name: Set up Node
+        uses: actions/setup-node@v3
+        with:
+          node-version: "16" # Или любая другая поддерживаемая версия
+
+      - name: Install dependencies
+        run: npm install # Или yarn install, если вы используете Yarn
+
+      - name: Build
+        run: npm run build # Или yarn build, если вы используете Yarn
+
+      - name: Deploy to GitHub Pages
+        uses: actions/deploy-pages@v2
+        id: deployment
+        with:
+          artifact_dir: public # Или папка, в которой находится собранный сайт
